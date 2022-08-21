@@ -14,9 +14,6 @@ except ImportError:
 
 from utilities import Put
 
-
-
-
 class ComplexSet:
 
     default_details = {
@@ -107,8 +104,10 @@ class ComplexSet:
         return real, imag
 
     def _gather_colour_array(self):
+        if size == 1:
+            return
         Put("Gathering")
-        comm.Gather(self.colour, self.full_colour, root=0,)
+        comm.Gather(self.colour, self.full_colour, root=0)
         Put("Gathered colour")
 
     def _iterate(self):
