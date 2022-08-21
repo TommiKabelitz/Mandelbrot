@@ -14,9 +14,11 @@ except ImportError:
     size = 1
 
 
-def Put(*args, **kwargs):
-    if rank == 0:
-        print(*args, **kwargs)
+def Put(*args, rank=rank,**kwargs):
+    if rank != rank:
+        return
+    print(f"({rank})",end=' ')
+    print(*args, **kwargs)
 
 
 class ComplexSet:
@@ -30,7 +32,7 @@ class ComplexSet:
         "max_iterations": 200,
         "figsize": [10, 7.5],
     }
-    # all
+
     def __init__(self):
         for detail, value in self.default_details.items():
             setattr(self, detail, value)
@@ -45,7 +47,6 @@ class ComplexSet:
         ]
         Put("Determined reduced pixel dims")
 
-    # all - but needs to be fixed to allocate smaller arrays and properly deal with colour - done
     def allocate_arrays(self):
         self._calculate_reduced_pixel_dimension()
 
@@ -64,7 +65,8 @@ class ComplexSet:
 
         Put("Allocated arrays")
 
-    # all - but needs to be fixed to produce limited extent, then full_extent added
+
+
     def _calculate_extent(self):
         half_width = self.full_width / 2 / self.zoom_factor
         aspect_ratio = self.full_dimension[1] / self.full_dimension[0]
@@ -76,19 +78,17 @@ class ComplexSet:
             self.centre[1] - half_height,  # Imag ax min
             self.centre[1] + half_height,  # Imag ax max
         ]
-        reduced_width = rank * (2 * half_width) / size
+        reduced_height = (2 * half_height) / size
         self.reduced_extent = [
             self.full_extent[0],
             self.full_extent[1],
-            self.full_extent[2] + rank * (2 * half_height) / size,
-            self.full_extent[3] + (rank - 1) * (2 * half_height) / size,
+            self.full_extent[3] - (rank+1) * reduced_height,
+            self.full_extent[3] - (rank) * reduced_height,
         ]
-        Put("full:",self.full_extent)
-        print("reduced:",self.reduced_extent)
-        
+        Put("full:", self.full_extent,rank=0)
+        Put("reduced:", self.reduced_extent)
         Put("Determined extents")
 
-    # all - will automaticall be fixed by extent changes
     def _create_array_of_complex_coordinates(self):
         self._calculate_extent()
         real = np.tile(
@@ -110,26 +110,16 @@ class ComplexSet:
         Put("Created array of complex coords")
         return real, imag
 
-    # root only - but called internally
-    def _scatter_colour_array(self):
-        Put("Scattering")
-        comm.Scatter([self.full_colour, MPI.INT], self.colour, root=0)
-        Put("Scattered colour")
-
     def _gather_colour_array(self):
         Put("Gathering")
-        comm.Gather(self.colour, self.full_colour, root=0)
+        comm.Gather(self.colour, self.full_colour, root=0,)
         Put("Gathered colour")
 
-    # all
     def _iterate(self):
         self.z *= self.z
         self.z += self.c
 
-    # all
     def update_colour(self):
-        # if rank == 0:
-        #     self._scatter_colour_array()
 
         for i in range(self.max_iterations):
             self._iterate()
@@ -138,11 +128,9 @@ class ComplexSet:
             ] = (i + 1)
             self.z[self.colour != 0] = 0
 
-        # if rank == 0:
         self._gather_colour_array()
         Put("Updated colour")
 
-    # root only
     def initialise_plot(self):
         plt.ion()
         self.fig, self.ax = plt.subplots(figsize=self.figsize)
@@ -152,13 +140,36 @@ class ComplexSet:
         self.fig.canvas.draw()
         Put("Plot initialised")
 
-    # root only
     def zoom_loop(self):
         Put("Looping for zoom")
-        while True:
+        if rank == 0:
+            # So this function never actually exits as far as I can tell
+            # So the on_click function needs to actually run everything
             self.fig.canvas.start_event_loop()
 
-    # root only
+            for dest in range(1, size):
+                comm.send(obj=self.centre, dest=dest)
+
+        else:
+            while True:
+                Put("Recieving in loop")
+                self.centre = comm.recv(source=0)
+                self.zoom_factor *= 2
+                self._function_to_call_on_all()
+
+    def _function_to_call_on_all(self):
+
+            self.initialise_arrays()
+            self.update_colour()
+
+            # Just a flag that all processes are done updating
+            if rank == 0:
+                for _ in range(1, size):
+                    comm.recv()
+                self._update_plot()
+            else:
+                comm.send(obj=None, dest=0)
+
     def _update_plot(self):
         self.image.set_data(self.full_colour)
         self.image.set_extent(self.full_extent)
@@ -166,22 +177,21 @@ class ComplexSet:
         self.fig.canvas.flush_events()
         Put("Updated Plot")
 
+
     def _onclick(self, event):
         self.centre[0] = event.xdata
         self.centre[1] = event.ydata
+        Put(f"new centre: {self.centre}")
         self.zoom_factor *= 2
-
-        self.initialise_arrays()
-        self.update_colour()
-        if rank == 0:
-            self._update_plot()
         Put("Detected mouse click")
+        for dest in range(1, size):
+            comm.send(obj=self.centre, dest=dest)
+        self._function_to_call_on_all()
 
 
 class Mandelbrot(ComplexSet):
 
     require_c_array = True
-    # all
     def initialise_arrays(self):
         self.colour.fill(0)
         self.z.fill(0.0)
@@ -192,12 +202,10 @@ class Mandelbrot(ComplexSet):
 class Julia(ComplexSet):
 
     require_c_array = False
-    # all
     def __init__(self, c: complex):
         super().__init__()
         self.c = c
 
-    # all
     def initialise_arrays(self):
         self.colour.fill(0)
         self.z.real, self.z.imag = self._create_array_of_complex_coordinates()
@@ -213,4 +221,4 @@ if __name__ == "__main__":
     mandelbrot.update_colour()
     if rank == 0:
         mandelbrot.initialise_plot()
-        mandelbrot.zoom_loop()
+    mandelbrot.zoom_loop()
