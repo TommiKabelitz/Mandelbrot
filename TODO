@@ -1,0 +1,17 @@
+ - Implement zoom out on right click
+ - Adjust number of iterations based on zoom factor
+ - Work out exit on close of plot window
+ - Simplify colour palette adjustment
+    - Add in variable to change zoom rate from 2
+ - Much cleanup required
+    - Consider which functions should be private and which not
+    - Look for refactoring opportunities
+    - Create run file and isolate classes
+    - General documentation
+ - Set up requirements.txt
+ - README
+ - License
+ - Repo
+ - Plot labels
+    - c for Julia
+    - centre for both
