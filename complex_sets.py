@@ -81,7 +81,7 @@ class ComplexSet:
             self.full_extent[3] - (rank+1) * reduced_height,
             self.full_extent[3] - (rank) * reduced_height,
         ]
-        Put("full:", self.full_extent,rank=0)
+        Put("full:", self.full_extent,root=True)
         Put("reduced:", self.reduced_extent)
         Put("Determined extents")
 
@@ -179,7 +179,10 @@ class ComplexSet:
         self.centre[0] = event.xdata
         self.centre[1] = event.ydata
         Put(f"new centre: {self.centre}")
-        self.zoom_factor *= 2
+        if event.button == 3:
+            self.zoom_factor /= 2
+        else:
+            self.zoom_factor *= 2
         Put("Detected mouse click")
         for dest in range(1, size):
             comm.send(obj=self.centre, dest=dest)
