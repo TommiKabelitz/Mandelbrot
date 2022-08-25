@@ -1,0 +1,51 @@
+parameters:
+  # Dimensions of the created image
+  full_dimension: [1080,1920]
+
+  # Size of the figure produced by matplotlib in inches
+  figsize: [10,7.5]
+  
+  # How far in to start zoomed - no zoom = 1
+  zoom_factor: 1
+  
+  # How quickly to zoom in/out on click
+  zoom_rate: 2
+
+  # Colour map to use. See https://matplotlib.org/stable/gallery/color/colormap_reference.html
+  # for options. Some options: viridis, Blues_r, PuRd_r (_r reverses the map)
+  colourmap: Blues_r
+
+  # Mandelbrot specific settings
+  mandelbrot:
+    # Initial centre of plot
+    centre: [-0.5,0]
+
+    # Don't touch this - defines the width at initial_zoom = 1
+    full_width: 3
+
+    # I wouldn't touch these in the Mandelbrot case
+    # Base value for number of iterations to find divergence. 
+    # Is a in iterations = a*zoom_factor^b
+    max_iterations: 100
+    # Is b in above expression
+    iteration_rate: 0.1
+
+  # Julia specific settings
+  julia:
+    # Initial centre of plot
+    centre: [0,0]
+
+    # Don't touch this - defines the width at initial_zoom = 1
+    full_width: 3
+
+    # Will probably need to fiddle with these to get nice Julia sets as they
+    # are very dependent on the c value
+    # Base value for number of iterations to find divergence. 
+    # Is a in iterations = a*zoom_factor^b
+    max_iterations: 100
+    # Is b in above expression
+    iteration_rate: 0.1
+
+  ## I wouldn't touch these
+  # How large does abs(z) have to be to be considered diverged?
+  magnitude_threshold: 5

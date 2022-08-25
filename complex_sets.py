@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
+import yaml
 from typing import Any
 
 try:
@@ -12,7 +14,21 @@ except ImportError:
     rank = 0
     size = 1
 
-from utilities import Put
+
+def Put(*args, root: bool = False, **kwargs):
+    """
+    Function for convenient MPI printing.
+
+    Displays ID of printing process and includes flag
+    for only printing on the root process.
+    Should be used exactly as print is used, but root=True
+    will force only the root process to actually print
+    """
+    if root and rank != 0:
+        return
+    print(f"({rank})", end=" ")
+    print(*args, **kwargs)
+
 
 class ComplexSet:
 
@@ -21,19 +37,41 @@ class ComplexSet:
         "full_width": 3.0,
         "full_dimension": [1080, 1920],
         "zoom_factor": 1.0,
+        "zoom_rate": 2,
         "magnitude_threshold": 5,
-        "max_iterations": 200,
+        "max_iterations": 100,
+        "iteration_rate": 0.1,
         "figsize": [10, 7.5],
+        "colourmap": "Blues_r"
     }
 
-    def __init__(self):
-        for detail, value in self.default_details.items():
+    def __init__(self, parameters_file: str = None):
+        if parameters_file is None:
+            details = self.default_details
+        else:
+            details = self._load_parameters(parameters_file)
+
+        for detail, value in details.items():
             setattr(self, detail, value)
         Put("Initialised set")
 
+    def _load_parameters(self, parameters_file: str = None):
+        with open(parameters_file,'r') as f:
+            parameters = yaml.safe_load(f)["parameters"]
+        
+        # Merging the set specific details inplace
+        # ie. {1:2,3:{4:5,6:7}} -> {1:2,4:5,6:7}
+        if type(self) is Mandelbrot:
+            parameters = {**parameters, **parameters.pop("mandelbrot")}
+        elif type(self) is Julia:
+            parameters = {**parameters, **parameters.pop("julia")}
+        else:
+            raise TypeError("Class ComplexSet should not be constructed alone. Construct Julia or Mandelbrot instead.")
+        return parameters
+
     def _calculate_reduced_pixel_dimension(self):
         # Ensure number of rows is divisible by size
-        self.full_dimension[0] -= self.full_dimension[0] % size
+        self.full_dimension[0] += self.full_dimension[0] % size
         self.reduced_dimension = [
             self.full_dimension[0] // size,
             self.full_dimension[1],
@@ -52,15 +90,14 @@ class ComplexSet:
         else:
             self.colour = self.full_colour
 
-        self.z = np.empty(self.reduced_dimension, dtype=np.complex64)
+        self.z = np.empty(self.reduced_dimension, dtype=np.complex128)
         if self.require_c_array:
-            self.c = np.empty(self.reduced_dimension, dtype=np.complex64)
+            self.c = np.empty(self.reduced_dimension, dtype=np.complex128)
 
         Put("Allocated arrays")
 
-
-
     def _calculate_extent(self):
+
         half_width = self.full_width / 2 / self.zoom_factor
         aspect_ratio = self.full_dimension[1] / self.full_dimension[0]
         half_height = half_width / aspect_ratio
@@ -75,10 +112,10 @@ class ComplexSet:
         self.reduced_extent = [
             self.full_extent[0],
             self.full_extent[1],
-            self.full_extent[3] - (rank+1) * reduced_height,
+            self.full_extent[3] - (rank + 1) * reduced_height,
             self.full_extent[3] - (rank) * reduced_height,
         ]
-        Put("full:", self.full_extent,root=True)
+        Put("full:", self.full_extent)
         Put("reduced:", self.reduced_extent)
         Put("Determined extents")
 
@@ -115,26 +152,57 @@ class ComplexSet:
         self.z += self.c
 
     def update_colour(self):
-
-        for i in range(self.max_iterations):
+        iterations = int(self.max_iterations * self.zoom_factor**self.iteration_rate)
+        for i in range(iterations):
             self._iterate()
             self.colour[
                 (abs(self.z) > self.magnitude_threshold) & (self.colour == 0)
             ] = (i + 1)
+            # Once a point has diverged, set z=0 to stop it being iterated
             self.z[self.colour != 0] = 0
+        self.colour[self.colour == 0] = iterations + 1
 
         self._gather_colour_array()
         Put("Updated colour")
 
     def initialise_plot(self):
         if rank == 0:
+            set_rc_params()
             plt.ion()
             self.fig, self.ax = plt.subplots(figsize=self.figsize)
-            self.image = self.ax.imshow(self.full_colour, extent=self.full_extent)
+            plt.get_current_fig_manager().full_screen_toggle()
+            self.image = self.ax.imshow(
+                self.full_colour,
+                cmap=self.colourmap,
+                extent=self.full_extent,
+            )
+            self._plot_artifacts()
             self.cid = self.fig.canvas.mpl_connect("button_press_event", self._onclick)
             self.fig.canvas.flush_events()
             self.fig.canvas.draw()
             Put("Plot initialised")
+
+    def _plot_artifacts(self):
+        self.ax.set_xlabel(r"Re($z$)")
+        self.ax.set_ylabel(r"Im($z$)")
+        if self.__class__ is Mandelbrot:
+            title = "Mandelbrot Set"
+        elif self.__class__ is Julia:
+            title = r"Julia Set: $c=$"+f"{self.c}"
+        self.ax.set_title(title)
+        self.fig_text = self.fig.text(0.005,0.9,self._get_text())
+
+    def _get_text(self):
+        decimal_places = int(abs(np.log10(self.full_width/self.zoom_factor))) + 3
+        text_string = f"""
+        Plot centre: ({self.centre[0]:{decimal_places+3}.{decimal_places}f},{self.centre[1]:{decimal_places+3}.{decimal_places}f})
+        Zoom factor: {self.zoom_factor}
+
+        Zoom in/out: left/right click
+        """
+        return text_string
+
+
 
     def zoom_loop(self):
         Put("Looping for zoom")
@@ -143,54 +211,59 @@ class ComplexSet:
             # So the on_click function needs to actually run everything
             self.fig.canvas.start_event_loop()
 
-            for dest in range(1, size):
-                comm.send(obj=self.centre, dest=dest)
+
 
         else:
             while True:
-                Put("Recieving in loop")
-                self.centre = comm.recv(source=0)
-                self.zoom_factor *= 2
+                Put("Receiving in loop")
+                receive_obj = comm.recv(source=0)
+                self.zoom_factor = receive_obj["zoom_factor"]
+                self.centre = receive_obj["centre"]
                 self._function_to_call_on_all()
 
     def _function_to_call_on_all(self):
 
-            self.initialise_arrays()
-            self.update_colour()
+        self.initialise_arrays()
+        self.update_colour()
 
-            # Just a flag that all processes are done updating
-            if rank == 0:
-                for _ in range(1, size):
-                    comm.recv()
-                self._update_plot()
-            else:
-                comm.send(obj=None, dest=0)
+        # Just a flag that all processes are done updating
+        if rank == 0:
+            for _ in range(1, size):
+                comm.recv()
+            self._update_plot()
+        else:
+            comm.send(obj=None, dest=0)
 
     def _update_plot(self):
         self.image.set_data(self.full_colour)
+        self.image.set_clim(vmin=self.full_colour.min(), vmax=self.full_colour.max())
         self.image.set_extent(self.full_extent)
+        self.fig_text.set_text(self._get_text())
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
         Put("Updated Plot")
 
-
     def _onclick(self, event):
+        if None in (event.xdata, event.ydata):
+            return
         self.centre[0] = event.xdata
         self.centre[1] = event.ydata
         Put(f"new centre: {self.centre}")
         if event.button == 3:
-            self.zoom_factor /= 2
+            self.zoom_factor /= self.zoom_rate
         else:
-            self.zoom_factor *= 2
+            self.zoom_factor *= self.zoom_rate
         Put("Detected mouse click")
+        send_obj = {"centre":self.centre,"zoom_factor":self.zoom_factor}
         for dest in range(1, size):
-            comm.send(obj=self.centre, dest=dest)
+            comm.send(obj=send_obj, dest=dest)
         self._function_to_call_on_all()
 
 
 class Mandelbrot(ComplexSet):
 
     require_c_array = True
+
     def initialise_arrays(self):
         self.colour.fill(0)
         self.z.fill(0.0)
@@ -201,8 +274,9 @@ class Mandelbrot(ComplexSet):
 class Julia(ComplexSet):
 
     require_c_array = False
-    def __init__(self, c: complex):
-        super().__init__()
+
+    def __init__(self, c: complex, **kwargs):
+        super().__init__(**kwargs)
         self.c = c
 
     def initialise_arrays(self):
@@ -210,3 +284,8 @@ class Julia(ComplexSet):
         self.z.real, self.z.imag = self._create_array_of_complex_coordinates()
         Put("Initialised array values")
 
+
+def set_rc_params():
+    mpl.rcParams["xtick.direction"] = "inout"
+    mpl.rcParams["ytick.direction"] = "inout"
+    mpl.rcParams["font.size"] = 18

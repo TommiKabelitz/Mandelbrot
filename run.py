@@ -12,7 +12,6 @@ from typing import Any
 
 # Local
 import complex_sets as cs
-from utilities import Put
 
 
 def command_line_interface() -> dict:
@@ -34,6 +33,12 @@ def command_line_interface() -> dict:
         type=float,
         required=False,
         help="c value to use when plotting Julia sets. Specify 2 floats, ordered real, then imaginary.",
+    )
+    parser.add_argument(
+        "-p",
+        "--parameters",
+        default="parameters.yml",
+        help="The yaml file to use for the configuation"
     )
     args = parser.parse_args()
     return vars(args)
@@ -60,13 +65,13 @@ if __name__ == "__main__":
     # Will be an empty tuple for Mandelbrot, hence no argument passed
     if inputArgs["set_type"].title() == "Julia":
         if inputArgs["c"] is not None:
-            args = complex(*inputArgs["c"])
+            args = [complex(*inputArgs["c"])]
         else:
-            Put("c value not specified for Julia set. Randomising c.", root=True)
+            print("c value not specified for Julia set. Randomising c.")
             random.seed()
-            args = complex(random.random(), random.random())
+            args = [complex(random.random(), random.random())]
     else:
-        args = ()
+        args = []
 
-    complex_set = getattr(cs, inputArgs["set_type"].title())(*args)
+    complex_set = getattr(cs, inputArgs["set_type"].title())(*args, parameters_file=inputArgs["parameters"])
     run_set(complex_set)
