@@ -1,13 +1,12 @@
- - Adjust number of iterations based on zoom factor
  - Work out exit on close of plot window
- - Simplify colour palette adjustment
-    - Add in variable to change zoom rate from 2
  - Much cleanup required
     - Consider which functions should be private and which not
     - Look for refactoring opportunities
     - General documentation
  - License
- - Plot labels
-    - c for Julia
-    - centre for both
- - Adjust default centre and width based on set type
+ - Examples in README
+    - And fix README typos
+ - Moving general stdout to logging
+    - optional
+ - Make possible to render and save animation of zoom
+
