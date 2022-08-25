@@ -53,7 +53,7 @@ class ComplexSet:
 
         for detail, value in details.items():
             setattr(self, detail, value)
-        Put("Initialised set")
+        Put("Initialised set",root=True)
 
     def _load_parameters(self, parameters_file: str = None):
         with open(parameters_file,'r') as f:
@@ -76,7 +76,7 @@ class ComplexSet:
             self.full_dimension[0] // size,
             self.full_dimension[1],
         ]
-        Put("Determined reduced pixel dims")
+        Put("Determined reduced pixel dims",root=True)
 
     def allocate_arrays(self):
         self._calculate_reduced_pixel_dimension()
@@ -94,7 +94,7 @@ class ComplexSet:
         if self.require_c_array:
             self.c = np.empty(self.reduced_dimension, dtype=np.complex128)
 
-        Put("Allocated arrays")
+        Put("Allocated arrays",root=True)
 
     def _calculate_extent(self):
 
@@ -115,9 +115,8 @@ class ComplexSet:
             self.full_extent[3] - (rank + 1) * reduced_height,
             self.full_extent[3] - (rank) * reduced_height,
         ]
-        Put("full:", self.full_extent)
-        Put("reduced:", self.reduced_extent)
-        Put("Determined extents")
+
+        Put("Determined extents",root=True)
 
     def _create_array_of_complex_coordinates(self):
         self._calculate_extent()
@@ -137,15 +136,15 @@ class ComplexSet:
             )[:, None],
             (1, self.reduced_dimension[1]),
         )
-        Put("Created array of complex coords")
+        Put("Created array of complex coords",root=True)
         return real, imag
 
     def _gather_colour_array(self):
         if size == 1:
             return
-        Put("Gathering")
+        Put("Gathering",root=True)
         comm.Gather(self.colour, self.full_colour, root=0)
-        Put("Gathered colour")
+        Put("Gathered colour",root=True)
 
     def _iterate(self):
         self.z *= self.z
@@ -163,7 +162,7 @@ class ComplexSet:
         self.colour[self.colour == 0] = iterations + 1
 
         self._gather_colour_array()
-        Put("Updated colour")
+        Put("Updated colour",root=True)
 
     def initialise_plot(self):
         if rank == 0:
@@ -180,7 +179,7 @@ class ComplexSet:
             self.cid = self.fig.canvas.mpl_connect("button_press_event", self._onclick)
             self.fig.canvas.flush_events()
             self.fig.canvas.draw()
-            Put("Plot initialised")
+            Put("Plot initialised",root=True)
 
     def _plot_artifacts(self):
         self.ax.set_xlabel(r"Re($z$)")
@@ -205,7 +204,7 @@ class ComplexSet:
 
 
     def zoom_loop(self):
-        Put("Looping for zoom")
+        Put("Looping for zoom",root=True)
         if rank == 0:
             # So this function never actually exits as far as I can tell
             # So the on_click function needs to actually run everything
@@ -215,7 +214,7 @@ class ComplexSet:
 
         else:
             while True:
-                Put("Receiving in loop")
+                Put("Receiving in loop",root=True)
                 receive_obj = comm.recv(source=0)
                 self.zoom_factor = receive_obj["zoom_factor"]
                 self.centre = receive_obj["centre"]
@@ -241,19 +240,19 @@ class ComplexSet:
         self.fig_text.set_text(self._get_text())
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
-        Put("Updated Plot")
+        Put("Updated Plot",root=True)
 
     def _onclick(self, event):
         if None in (event.xdata, event.ydata):
             return
         self.centre[0] = event.xdata
         self.centre[1] = event.ydata
-        Put(f"new centre: {self.centre}")
+        Put(f"new centre: {self.centre}",root=True)
         if event.button == 3:
             self.zoom_factor /= self.zoom_rate
         else:
             self.zoom_factor *= self.zoom_rate
-        Put("Detected mouse click")
+        Put("Detected mouse click",root=True)
         send_obj = {"centre":self.centre,"zoom_factor":self.zoom_factor}
         for dest in range(1, size):
             comm.send(obj=send_obj, dest=dest)
@@ -268,7 +267,7 @@ class Mandelbrot(ComplexSet):
         self.colour.fill(0)
         self.z.fill(0.0)
         self.c.real, self.c.imag = self._create_array_of_complex_coordinates()
-        Put("Initialised array values")
+        Put("Initialised array values",root=True)
 
 
 class Julia(ComplexSet):
@@ -282,7 +281,7 @@ class Julia(ComplexSet):
     def initialise_arrays(self):
         self.colour.fill(0)
         self.z.real, self.z.imag = self._create_array_of_complex_coordinates()
-        Put("Initialised array values")
+        Put("Initialised array values",root=True)
 
 
 def set_rc_params():
