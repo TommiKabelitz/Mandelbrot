@@ -4,8 +4,6 @@
     - Look for refactoring opportunities
     - General documentation
  - License
- - Examples in README
-    - And fix README typos
  - Moving general stdout to logging
     - optional
  - Make possible to render and save animation of zoom
